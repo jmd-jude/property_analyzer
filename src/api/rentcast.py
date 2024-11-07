@@ -1,19 +1,17 @@
-import os
 import requests
 import logging
 from typing import Dict, Optional, List, Union
 from time import sleep
-from dotenv import load_dotenv
 import json
 import re
+import streamlit as st
 
 class RentcastAPI:
     def __init__(self):
-        """Initialize RentcastAPI with API key from environment"""
-        load_dotenv()
-        self.api_key = os.getenv('RENTCAST_API_KEY')
+        """Initialize RentcastAPI with API key from Streamlit secrets"""
+        self.api_key = st.secrets["RENTCAST_API_KEY"]
         if not self.api_key:
-            raise ValueError("RENTCAST_API_KEY not found in environment variables")
+            raise ValueError("RENTCAST_API_KEY not found in Streamlit secrets")
             
         self.base_url = "https://api.rentcast.io/v1"
         self.headers = {

@@ -1,14 +1,12 @@
-import os
 import logging
 from typing import Dict
 from openai import OpenAI
-from dotenv import load_dotenv
+import streamlit as st
 
 class OpenAIService:
     def __init__(self):
-        """Initialize OpenAI service with API key"""
-        load_dotenv()
-        self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        """Initialize OpenAI service with API key from Streamlit secrets"""
+        self.client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
