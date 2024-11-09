@@ -81,4 +81,5 @@ Focus on clear, actionable insights structured with proper markdown formatting. 
             return response.choices[0].text.strip()
         except Exception as e:
             self.logger.error(f"OpenAI API error: {e}")
+            st.write("OpenAI API error:", e)  # Display the error in the Streamlit UI
             return "Unable to generate analysis at this time. Please try again later."

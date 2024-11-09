@@ -89,6 +89,50 @@ class RentcastAPI:
         
         return None
 
+    def search_properties(self, params: Dict) -> Optional[List[Dict]]:
+        """Search for properties using latitude/longitude and filters"""
+        self.logger.info(f"Searching properties with params: {params}")
+        
+        data = self._make_request("/properties/search", params)
+        
+        if isinstance(data, list):
+            self.logger.info(f"Found {len(data)} properties")
+            return data
+            
+        self.logger.warning("No properties found or invalid response format")
+        return None
+    
+    def get_rent_estimate(self, address: str, property_data: Dict) -> Optional[Dict]:
+        """Get rental estimate from RentCast API"""
+        if not address:
+            self.logger.error("No address provided for rent estimate")
+            return None
+            
+        # Format address consistently
+        formatted_address = self.format_address(address)
+        
+        params = {
+            "address": formatted_address,
+            "propertyType": property_data.get('propertyType', 'Single Family'),
+            "bedrooms": property_data.get('bedrooms'),
+            "bathrooms": property_data.get('bathrooms'),
+            "squareFootage": property_data.get('squareFootage'),
+            "compCount": 5
+        }
+        
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+        
+        self.logger.info(f"Requesting rent estimate for: {formatted_address}")
+        data = self._make_request("/avm/rent/long-term", params)  # Note the endpoint change
+        
+        if data:
+            self.logger.info(f"Received rent estimate: ${data.get('rent', 0):,}")
+            return data
+            
+        self.logger.warning("No rent estimate received")
+        return None
+    
     def get_value_estimate(self, address: str, property_data: Dict) -> Optional[Dict]:
         """Get property value estimate from AVM endpoint"""
         if not address:
@@ -150,31 +194,39 @@ class RentcastAPI:
                 self.logger.info("Created minimal sale data structure from rental data")
         
         return data
-
-    def get_comparables(self, address: str, zip_code: str) -> Optional[List[Dict]]:
-        """Get comparable properties in the area"""
-        if not address or not zip_code:
-            self.logger.error("Missing address or zip code for comparables")
-            return None
-            
+    
+    def get_comparables(self, property_data, radius, sqft_range):
+        """Get comparable properties using AVM endpoint"""
         params = {
-            "address": address,
-            "zipCode": zip_code,
-            "radius": 1,    # 1 mile radius
-            "limit": 5      # Top 5 comparables
+            "address": property_data['formattedAddress'],
+            "propertyType": property_data['propertyType'],
+            "bedrooms": property_data['bedrooms'],
+            "bathrooms": property_data['bathrooms'],
+            "squareFootage": property_data['squareFootage'],
+            "radius": radius,
+            "compCount": 20  # Request more comps since we'll filter them
         }
         
-        data = self._make_request("/properties", params)
+        with st.expander("View Search Parameters"):
+            st.json(params)
         
-        if isinstance(data, list):
-            valid_comps = [
-                prop for prop in data 
-                if self.validate_data(prop)
+        avm_data = self.get_value_estimate(params['address'], property_data)
+        
+        if avm_data and 'comparables' in avm_data:
+            comps = avm_data['comparables']
+            
+            # Filter by square footage range
+            sqft = property_data['squareFootage']
+            min_sqft = sqft * (1 - sqft_range/100)
+            max_sqft = sqft * (1 + sqft_range/100)
+            
+            filtered_comps = [
+                comp for comp in comps
+                if min_sqft <= comp['squareFootage'] <= max_sqft
             ]
             
-            self.logger.info(f"Found {len(valid_comps)} valid comparable properties")
-            return valid_comps[:5]  # Return top 5 valid comparables
-            
+            return filtered_comps
+        
         return None
 
     def validate_data(self, property_data: Dict) -> bool:
