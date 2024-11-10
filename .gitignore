@@ -1,5 +1,5 @@
 new_env/
 __pycache__/
 .env
-.devcontainer
+/.devcontainer
 .streamlit/secrets.toml
