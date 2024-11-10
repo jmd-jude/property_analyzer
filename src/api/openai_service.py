@@ -10,76 +10,137 @@ class OpenAIService:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
 
-    def generate_property_analysis(self, scoring_data: Dict) -> str:
-        """Generate detailed property analysis using OpenAI"""
-        value_analysis = scoring_data.get('value_analysis', {})
-        
-        prompt = f"""Analyze this property investment data and provide a detailed analysis using the following markdown format:
+    def generate_investment_analysis(self, property_data: Dict) -> str:
+        """Generate investment-focused analysis"""
+        prompt = f"""You are an expert real estate investment analyst. Analyze this property data and provide actionable insights for an income property investor.
 
-# Overall Assessment
+Property Details:
+- Type: {property_data.get('propertyType')}
+- Configuration: {property_data.get('bedrooms')} beds, {property_data.get('bathrooms')} baths, {property_data.get('squareFootage')} sqft
+- Year Built: {property_data.get('yearBuilt')}
 
-The property scored **{scoring_data['total_score']}/100** with a **{scoring_data['confidence']}** confidence level.
+Valuation:
+- Estimated Value: ${property_data.get('value_estimate', {}).get('price', 0):,.0f}
+- Value Range: ${property_data.get('value_estimate', {}).get('priceRangeLow', 0):,.0f} to ${property_data.get('value_estimate', {}).get('priceRangeHigh', 0):,.0f}
 
-Current estimated value: **${value_analysis.get('estimated_value', 0):,.2f}**
-Value range: ${value_analysis.get('value_range_low', 0):,.2f} to ${value_analysis.get('value_range_high', 0):,.2f}
+Income Metrics:
+- Monthly Rent: ${property_data.get('rental_estimate', {}).get('rent', 0):,.0f}
+- Gross Rent Multiplier: {property_data.get('grm', 0):.1f}x
+- Est. Cap Rate: {property_data.get('cap_rate', 0):.1f}%
 
-Provide a concise summary of the overall investment opportunity.
+Market Metrics:
+- Median Days on Market: {property_data.get('market_metrics', {}).get('median_dom', 0)}
+- Average Comp Correlation: {property_data.get('market_metrics', {}).get('avg_correlation', 0)*100:.1f}%
 
-## Market Analysis 🏘️
+Provide a detailed investment analysis following this structure using markdown:
 
-* Market Value: ${scoring_data['market_context'].get('avg_value', 0):,.2f}
-* Price/SqFt: ${scoring_data['market_context'].get('avg_price_sqft', 0):,.2f}
-* Market Activity: {scoring_data['market_context'].get('avg_days_on_market', 0):.0f} days average
-* Total Properties: {scoring_data['market_context'].get('total_properties', 0)}
+Focus on clear, actionable insights using proper spacing and formatting. Some guidelines:
+- Use proper spacing between sentences for readability
+- Format numbers with commas for thousands
+- Use proper currency formatting (e.g., $1,000,000)
+- Avoid running words together
+- Use line breaks between sections
 
-Analyze these market metrics and their implications.
+# Investment Opportunity Overview
+Provide a concise summary of the investment opportunity, highlighting the most compelling aspects.
 
-## Investment Potential 📈
+## Valuation Analysis 💰
+Analyze the property's value proposition, price positioning, and negotiation opportunities.
 
-Score Breakdown:
-* 💰 Value Score: {scoring_data['value_score']}/40
-* 📍 Location Score: {scoring_data['location_score']}/30
-* ⭐ Feature Score: {scoring_data['feature_score']}/30
+## Income Potential 📈
+Evaluate the rental income potential, market positioning, and income stability factors.
 
-Key Factors:
-{chr(10).join(f"* {factor}" for factor in scoring_data['factors'])}
+## Market Position 📊
+Assess how this property compares to market comps and its competitive advantages/disadvantages.
 
-## Property Features 🏠
+## Risk Assessment ⚠️
+Identify key risks and mitigating factors.
 
-Analyze the property's strengths and potential improvements based on:
-{chr(10).join(f"* {factor}" for factor in scoring_data['factors'])}
+## Strategic Recommendations 🎯
+1. Outline specific action items for due diligence
+2. Suggest negotiation strategy
+3. Recommend property improvements that could enhance value
 
-## Risk Analysis ⚠️
-
-Consider:
-* Market-specific risks
-* Property-specific concerns
-* Competition factors
-* Price position relative to market
-
-## Recommendations 📋
-
-1. **Price Strategy**
-   * Current ask vs. market value
-   * Negotiation points
-   * Value-add opportunities
-
-2. **Next Steps**
-   * Due diligence checklist
-   * Key areas to investigate
-   * Timeline considerations
-
-Focus on clear, actionable insights structured with proper markdown formatting. Use bullet points for lists and bold for key metrics."""
+Focus on actionable insights that would help an investor make a decision. Be direct about both opportunities and concerns."""
 
         try:
-            response = self.client.completions.create(
-                model="gpt-3.5-turbo-instruct",
-                prompt=prompt,
-                max_tokens=1000,
+            response = self.client.chat.completions.create(
+                model="gpt-4",  # Using GPT-4 for better analysis
+                messages=[{
+                    "role": "system",
+                    "content": "You are an expert real estate investment analyst providing actionable insights to investors."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }],
                 temperature=0.7
             )
-            return response.choices[0].text.strip()
+            return response.choices[0].message.content
+
         except Exception as e:
             self.logger.error(f"OpenAI API error: {e}")
-            st.write("OpenAI API error:", e)  # Display the error in the Streamlit UI
+            return "Unable to generate analysis at this time. Please try again later."
+
+    def generate_1031_analysis(self, property_data: Dict) -> str:
+        """Generate 1031 exchange focused analysis"""
+        prompt = f"""You are a 1031 exchange specialist. Analyze this property data and provide insights specific to 1031 exchange considerations.
+
+Property Details:
+- Type: {property_data.get('propertyType')}
+- Value: ${property_data.get('value_estimate', {}).get('price', 0):,.0f}
+- Market Days: {property_data.get('market_metrics', {}).get('median_dom', 0)}
+
+Timeline Metrics:
+- Available Properties: {property_data.get('exchange_metrics', {}).get('available_properties', 0)}
+- Median Days to Close: {property_data.get('exchange_metrics', {}).get('median_days_to_close', 0)}
+- 180-Day Close Rate: {property_data.get('exchange_metrics', {}).get('close_rate', 0)}%
+
+Provide a 1031-focused analysis following this structure using markdown:
+
+Focus on clear, actionable insights using proper spacing and formatting. Some guidelines:
+- Use proper spacing between sentences for readability
+- Format numbers with commas for thousands
+- Use proper currency formatting (e.g., $1,000,000)
+- Avoid running words together
+- Use line breaks between sections
+
+# 1031 Exchange Suitability Analysis
+
+## Timeline Feasibility 📅
+Evaluate the likelihood of meeting 45-day identification and 180-day closing requirements based on market metrics.
+
+## Like-Kind Qualification 📋
+Assess property's qualification as like-kind replacement and any potential concerns.
+
+## Value Match Analysis 💵
+Analyze value adequacy for exchange purposes and equity preservation.
+
+## Market Liquidity Risk 📊
+Evaluate market conditions affecting transaction timeline feasibility.
+
+## Critical Recommendations 🎯
+1. Specific action items for the 45-day period
+2. Risk mitigation strategies
+3. Timeline management recommendations
+
+Focus on exchange-specific considerations and timeline-critical factors. Be direct about feasibility concerns and mitigation strategies."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[{
+                    "role": "system",
+                    "content": "You are a 1031 exchange specialist providing critical insights for exchange transactions."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }],
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            self.logger.error(f"OpenAI API error: {e}")
             return "Unable to generate analysis at this time. Please try again later."
