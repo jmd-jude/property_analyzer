@@ -36,14 +36,23 @@ class MarketAnalyzer:
         """Display value analysis metrics"""
         if value_data:
             cols = st.columns(3)
-            cols[0].metric("Estimated Value", f"${value_data.get('price', 0):,.0f}")
+            cols[0].metric(
+                "Estimated Value", 
+                f"${value_data.get('price', 0):,.0f}",
+                help="Estimated market value based on recent comparable sales"
+            )
             cols[1].metric(
                 "Value Range", 
-                f"${value_data.get('priceRangeLow', 0):,.0f} - ${value_data.get('priceRangeHigh', 0):,.0f}"
+                f"${value_data.get('priceRangeLow', 0):,.0f} - ${value_data.get('priceRangeHigh', 0):,.0f}",
+                help="Expected value range based on market variability and comp quality"
             )
             spread = ((value_data.get('priceRangeHigh', 0) - value_data.get('priceRangeLow', 0)) 
-                     / value_data.get('price', 1)) * 100
-            cols[2].metric("Value Spread", f"{spread:.1f}%")
+                    / value_data.get('price', 1)) * 100
+            cols[2].metric(
+                "Value Spread", 
+                f"{spread:.1f}%",
+                help="Lower spread indicates higher confidence in the value estimate"
+            )
 
     def display_income_metrics(self, value_data, rental_data, property_data):
         """Display income property focused metrics"""
@@ -53,24 +62,39 @@ class MarketAnalyzer:
             # Monthly Rent
             monthly_rent = rental_data.get('rent', 0)
             annual_rent = monthly_rent * 12
-            cols[0].metric("Monthly Rent", f"${monthly_rent:,.0f}")
+            cols[0].metric(
+                "Monthly Rent", 
+                f"${monthly_rent:,.0f}",
+                help="Estimated monthly rental income based on comparable properties"
+            )
             
             # Gross Rent Multiplier
             if value_data.get('price'):
                 grm = value_data['price'] / annual_rent
-                cols[1].metric("Gross Rent Multiplier", f"{grm:.1f}x")
+                cols[1].metric(
+                    "Gross Rent Multiplier", 
+                    f"{grm:.1f}x",
+                    help="Property price divided by annual rent. Lower is better. Under 15x is considered good."
+                )
             
-            # Cap Rate (Estimated)
-            # Assuming 40% expenses for a rough estimate
+            # Cap Rate
             noi = annual_rent * 0.6
             if value_data.get('price'):
                 cap_rate = (noi / value_data['price']) * 100
-                cols[2].metric("Est. Cap Rate", f"{cap_rate:.1f}%")
+                cols[2].metric(
+                    "Est. Cap Rate", 
+                    f"{cap_rate:.1f}%",
+                    help="Estimated net operating income divided by property value. Higher is better. 5-10% is typical."
+                )
             
             # Price per Square Foot
             if property_data.get('squareFootage'):
                 price_sqft = value_data['price'] / property_data['squareFootage']
-                cols[3].metric("Price/SqFt", f"${price_sqft:.0f}")
+                cols[3].metric(
+                    "Price/SqFt", 
+                    f"${price_sqft:.0f}",
+                    help="Price per square foot. Compare to similar properties to gauge value."
+                )
 
     def display_exchange_metrics(self, value_data, property_data, comparables):
         """Display 1031 exchange focused metrics"""
@@ -81,21 +105,41 @@ class MarketAnalyzer:
             days_on_market = [c.get('daysOnMarket', 0) for c in comparables if c.get('daysOnMarket')]
             if days_on_market:
                 median_dom = statistics.median(days_on_market)
-                cols[0].metric("Median Days to Sell", f"{median_dom:.0f}")
+                cols[0].metric(
+                    "Median Days to Sell", 
+                    f"{median_dom:.0f}",
+                    help="Median time properties take to sell. Critical for 180-day exchange window."
+                )
                 
                 # Timeline Risk
                 timeline_risk = "Low" if median_dom < 45 else "Medium" if median_dom < 90 else "High"
-                cols[1].metric("Timeline Risk", timeline_risk)
+                cols[1].metric(
+                    "Timeline Risk", 
+                    timeline_risk,
+                    help="Risk assessment for meeting 1031 exchange deadlines based on market velocity"
+                )
             
             # Like-Kind Confidence
             if property_data.get('propertyType') == 'Single Family':
-                cols[2].metric("Like-Kind Status", "Qualified")
+                cols[2].metric(
+                    "Like-Kind Status", 
+                    "Qualified",
+                    help="Indicates if property qualifies as like-kind for 1031 exchange purposes"
+                )
             else:
-                cols[2].metric("Like-Kind Status", "Review Needed")
+                cols[2].metric(
+                    "Like-Kind Status", 
+                    "Review Needed",
+                    help="Additional review needed to confirm like-kind qualification"
+                )
             
             # Market Liquidity
             active_count = len([c for c in comparables if not c.get('removedDate')])
-            cols[3].metric("Active Listings", str(active_count))
+            cols[3].metric(
+                "Active Listings", 
+                str(active_count),
+                help="Number of similar properties currently available. Important for 45-day identification period"
+            )
 
     def analyze_property(self, address, radius, sqft_range):
         """Complete property analysis with tabbed interface"""
@@ -140,7 +184,7 @@ class MarketAnalyzer:
                             ccols = st.columns(3)
                             ccols[0].write(f"**Price:** ${comp.get('price', 0):,.0f}")
                             ccols[1].write(f"Price/SqFt: ${comp.get('price', 0)/comp['squareFootage']:.0f}")
-                            ccols[2].write(f"**DOM:** {comp.get('daysOnMarket', 'N/A')}")
+                            ccols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
                 
                 with income_cols[1]:
                     if rental_data and 'comparables' in rental_data:
@@ -156,7 +200,7 @@ class MarketAnalyzer:
                                 rcols = st.columns(3)
                                 rcols[0].write(f"**Rent:** ${comp.get('price', 0):,.0f}/mo")
                                 rcols[1].write(f"Price/SqFt: ${comp.get('price', 0)/comp['squareFootage']:.2f}")
-                                rcols[2].write(f"**DOM:** {comp.get('daysOnMarket', 'N/A')}")
+                                rcols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
 
             if value_data and rental_data:
             # Prepare data for AI analysis
@@ -195,7 +239,7 @@ class MarketAnalyzer:
                         c for c in value_data['comparables'] 
                         if not c.get('removedDate')
                     ]
-                    st.metric("Available Properties", len(active_comps))
+                    st.metric("Available Properties", len(active_comps), help="Properties currently available that could qualify for your exchange")
                     
                     days_on_market = [
                         c.get('daysOnMarket', 0) 
@@ -204,7 +248,7 @@ class MarketAnalyzer:
                     ]
                     if days_on_market:
                         avg_dom = sum(days_on_market) / len(days_on_market)
-                        st.metric("Avg Days on Market", f"{avg_dom:.0f}")
+                        st.metric("Avg Days on Market", f"{avg_dom:.0f}", help="Average time properties take to sell in this market")
             
             with timeline_cols[1]:
                 st.write("180-Day Closing Period")
@@ -214,7 +258,7 @@ class MarketAnalyzer:
                         if c.get('removedDate') and c.get('daysOnMarket', 0) < 180
                     ]
                     success_rate = len(recent_sales) / len(value_data['comparables']) * 100
-                    st.metric("180-Day Close Rate", f"{success_rate:.0f}%")
+                    st.metric("180-Day Close Rate", f"{success_rate:.0f}%", help="Percentage of properties that sold within 1031 exchange timeline requirements")
                     if 'taxAssessments' in property_data and property_data['taxAssessments']:
                         st.subheader("Value History")
                         tax_data = property_data['taxAssessments']
