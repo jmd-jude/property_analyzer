@@ -7,20 +7,32 @@ from api.openai_service import OpenAIService
 
 st.set_page_config(page_title="Property Analysis", layout="wide")
 
-# Test addresses we know exist in RentCast's database
-TEST_ADDRESSES = {
-    "East Austin (Urban/Hot)": "1000 E 5th St, Austin, TX 78702",
-    "San Antonio Downtown (Urban/Condo)": "215 Center St, San Antonio, TX 78202",
-    "Dallas Uptown": "3111 Cole Ave, Dallas, TX 75204",
-    "Austin East Side": "1910 E 2nd St, Austin, TX 78702",
-    "San Antonio Hills": "5914 Burning Sunrise Dr, San Antonio, TX 78244"
-}
-
 class MarketAnalyzer:
     def __init__(self):
         self.rentcast = RentcastAPI()
         self.openai = OpenAIService()
 
+    def colored_metric(self, label, value, help_text, thresholds=None, format_func=None):
+        """
+        Display a metric with color coding based on thresholds
+        thresholds: dict with 'good', 'medium', 'poor' keys and their threshold values
+        format_func: function to format the value (e.g., lambda x: f"${x:,.0f}")
+        """
+        if format_func:
+            formatted_value = format_func(value)
+        else:
+            formatted_value = value
+            
+        if thresholds:
+            if value <= thresholds.get('poor', float('inf')):
+                formatted_value = f"🔴 {formatted_value}"
+            elif value <= thresholds.get('medium', float('inf')):
+                formatted_value = f"🟡 {formatted_value}"
+            else:
+                formatted_value = f"🟢 {formatted_value}"
+                
+        return formatted_value, help_text
+    
     def display_property_details(self, property_data):
         """Display basic property information"""
         st.subheader("Property Details")
@@ -55,7 +67,7 @@ class MarketAnalyzer:
             )
 
     def display_income_metrics(self, value_data, rental_data, property_data):
-        """Display income property focused metrics"""
+        """Display income property focused metrics with color coding"""
         if value_data and rental_data:
             cols = st.columns(4)
             
@@ -63,41 +75,59 @@ class MarketAnalyzer:
             monthly_rent = rental_data.get('rent', 0)
             annual_rent = monthly_rent * 12
             cols[0].metric(
-                "Monthly Rent", 
-                f"${monthly_rent:,.0f}",
-                help="Estimated monthly rental income based on comparable properties"
+                "Monthly Rent",
+                *self.colored_metric(
+                    "Monthly Rent",
+                    monthly_rent,
+                    "Estimated monthly rental income based on comparable properties",
+                    format_func=lambda x: f"${x:,.0f}"
+                )
             )
             
             # Gross Rent Multiplier
             if value_data.get('price'):
                 grm = value_data['price'] / annual_rent
                 cols[1].metric(
-                    "Gross Rent Multiplier", 
-                    f"{grm:.1f}x",
-                    help="Property price divided by annual rent. Lower is better. Under 15x is considered good."
+                    "Gross Rent Multiplier",
+                    *self.colored_metric(
+                        "GRM",
+                        grm,
+                        "Property price divided by annual rent. Lower is better. Under 15x is considered good.",
+                        thresholds={'poor': 20, 'medium': 15, 'good': 12},
+                        format_func=lambda x: f"{x:.1f}x"
+                    )
                 )
             
             # Cap Rate
-            noi = annual_rent * 0.6
+            noi = annual_rent * 0.6  # Simple NOI estimation
             if value_data.get('price'):
                 cap_rate = (noi / value_data['price']) * 100
                 cols[2].metric(
-                    "Est. Cap Rate", 
-                    f"{cap_rate:.1f}%",
-                    help="Estimated net operating income divided by property value. Higher is better. 5-10% is typical."
+                    "Est. Cap Rate",
+                    *self.colored_metric(
+                        "Cap Rate",
+                        cap_rate,
+                        "Estimated net operating income divided by property value. Higher is better. 5-10% is typical.",
+                        thresholds={'poor': 4, 'medium': 6, 'good': 8},
+                        format_func=lambda x: f"{x:.1f}%"
+                    )
                 )
             
             # Price per Square Foot
             if property_data.get('squareFootage'):
                 price_sqft = value_data['price'] / property_data['squareFootage']
                 cols[3].metric(
-                    "Price/SqFt", 
-                    f"${price_sqft:.0f}",
-                    help="Price per square foot. Compare to similar properties to gauge value."
+                    "Price/SqFt",
+                    *self.colored_metric(
+                        "Price/SqFt",
+                        price_sqft,
+                        "Price per square foot. Compare to similar properties to gauge value.",
+                        format_func=lambda x: f"${x:.0f}"
+                    )
                 )
 
     def display_exchange_metrics(self, value_data, property_data, comparables):
-        """Display 1031 exchange focused metrics"""
+        """Display 1031 exchange focused metrics with color coding"""
         if value_data and comparables:
             cols = st.columns(4)
             
@@ -106,39 +136,50 @@ class MarketAnalyzer:
             if days_on_market:
                 median_dom = statistics.median(days_on_market)
                 cols[0].metric(
-                    "Median Days to Sell", 
-                    f"{median_dom:.0f}",
-                    help="Median time properties take to sell. Critical for 180-day exchange window."
+                    "Median Days to Sell",
+                    *self.colored_metric(
+                        "DOM",
+                        median_dom,
+                        "Median time properties take to sell. Critical for 180-day exchange window.",
+                        thresholds={'poor': 90, 'medium': 45, 'good': 30},
+                        format_func=lambda x: f"{x:.0f}"
+                    )
                 )
                 
                 # Timeline Risk
                 timeline_risk = "Low" if median_dom < 45 else "Medium" if median_dom < 90 else "High"
+                risk_color = "🟢" if timeline_risk == "Low" else "🟡" if timeline_risk == "Medium" else "🔴"
                 cols[1].metric(
-                    "Timeline Risk", 
-                    timeline_risk,
-                    help="Risk assessment for meeting 1031 exchange deadlines based on market velocity"
+                    "Timeline Risk",
+                    f"{risk_color} {timeline_risk}",
+                    "Risk assessment for meeting 1031 exchange deadlines based on market velocity"
                 )
             
             # Like-Kind Confidence
             if property_data.get('propertyType') == 'Single Family':
                 cols[2].metric(
-                    "Like-Kind Status", 
-                    "Qualified",
-                    help="Indicates if property qualifies as like-kind for 1031 exchange purposes"
+                    "Like-Kind Status",
+                    "🟢 Qualified",
+                    "Indicates if property qualifies as like-kind for 1031 exchange purposes"
                 )
             else:
                 cols[2].metric(
-                    "Like-Kind Status", 
-                    "Review Needed",
-                    help="Additional review needed to confirm like-kind qualification"
+                    "Like-Kind Status",
+                    "🟡 Review Needed",
+                    "Additional review needed to confirm like-kind qualification"
                 )
             
             # Market Liquidity
             active_count = len([c for c in comparables if not c.get('removedDate')])
             cols[3].metric(
-                "Active Listings", 
-                str(active_count),
-                help="Number of similar properties currently available. Important for 45-day identification period"
+                "Active Listings",
+                *self.colored_metric(
+                    "Active",
+                    active_count,
+                    "Number of similar properties currently available. Important for 45-day identification period",
+                    thresholds={'poor': 3, 'medium': 5, 'good': 10},
+                    format_func=str
+                )
             )
 
     def analyze_property(self, address, radius, sqft_range):
@@ -183,8 +224,13 @@ class MarketAnalyzer:
                         ):
                             ccols = st.columns(3)
                             ccols[0].write(f"**Price:** ${comp.get('price', 0):,.0f}")
-                            ccols[1].write(f"Price/SqFt: ${comp.get('price', 0)/comp['squareFootage']:.0f}")
-                            ccols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
+                # Safely calculate price per square foot if squareFootage is available
+                if comp.get('squareFootage'):
+                    price_per_sqft = comp.get('price', 0) / comp.get('squareFootage', 1)
+                    ccols[1].write(f"Price/SqFt: ${price_per_sqft:.0f}")
+                else:
+                    ccols[1].write("Price/SqFt: N/A")
+                ccols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
                 
                 with income_cols[1]:
                     if rental_data and 'comparables' in rental_data:
@@ -199,8 +245,13 @@ class MarketAnalyzer:
                             ):
                                 rcols = st.columns(3)
                                 rcols[0].write(f"**Rent:** ${comp.get('price', 0):,.0f}/mo")
-                                rcols[1].write(f"Price/SqFt: ${comp.get('price', 0)/comp['squareFootage']:.2f}")
-                                rcols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
+            # Safely calculate price per square foot if squareFootage is available
+            if comp.get('squareFootage'):
+                price_per_sqft = comp.get('price', 0) / comp.get('squareFootage', 1)
+                rcols[1].write(f"Price/SqFt: ${price_per_sqft:.2f}")
+            else:
+                rcols[1].write("Price/SqFt: N/A")
+            rcols[2].write(f"Days on Market: {comp.get('daysOnMarket', 'N/A')}")
 
             if value_data and rental_data:
             # Prepare data for AI analysis
@@ -299,18 +350,26 @@ def main():
         st.session_state.radius = 2
     if 'sqft_range' not in st.session_state:
         st.session_state.sqft_range = 30
+    if 'address' not in st.session_state:
+        st.session_state.address = ""
 
     # Create form for inputs
     with st.form("analysis_form"):
-        # Address selector
-        selected_market = st.selectbox(
-            "Select Property",
-            options=list(TEST_ADDRESSES.keys()),
-            help="Choose a property to analyze"
-        )
+        col1, col2 = st.columns([2,1])
         
-        # Show the actual address that will be analyzed
-        st.info(f"Analyzing: {TEST_ADDRESSES[selected_market]}")
+        with col1:
+            address = st.text_input(
+                "Enter the property address",
+                value=st.session_state.address,
+                help="Format: Street Address, City, State Zip (e.g., 123 Main St, Austin, TX 78702)",
+                placeholder="123 Main St, Austin, TX 78702"
+            )
+        
+        with col2:
+            st.write("Need a test address?")
+            if st.form_submit_button("Load Example"):
+                st.session_state.address = "1000 E 5th St, Austin, TX 78702"
+                st.rerun()
         
         st.subheader("Search Criteria")
         col1, col2 = st.columns(2)
@@ -331,13 +390,28 @@ def main():
             
         submitted = st.form_submit_button("Analyze Property")
         
-    if submitted:
-        analyzer = MarketAnalyzer()
-        analyzer.analyze_property(
-            TEST_ADDRESSES[selected_market],
-            st.session_state.radius,
-            st.session_state.sqft_range
-        )
+        if submitted:
+            if not address:
+                st.error("Please enter a property address")
+                return
+                
+            # Validate address format
+            if "," not in address or len(address.split(",")) < 3:
+                st.error("Please enter address in format: Street Address, City, State Zip")
+                return
+                
+            # Check for zip code
+            if not any(c.isdigit() for c in address.split(",")[-1]):
+                st.error("Please include ZIP code in the address")
+                return
+                
+            with st.spinner('Analyzing property...'):
+                analyzer = MarketAnalyzer()
+                analyzer.analyze_property(
+                    address,
+                    st.session_state.radius,
+                    st.session_state.sqft_range
+                )
 
 if __name__ == "__main__":
     main()
